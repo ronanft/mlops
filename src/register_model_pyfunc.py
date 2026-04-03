@@ -28,7 +28,7 @@ class WhisperPyFunc(mlflow.pyfunc.PythonModel):  # type: ignore
         raise ValueError("Input deve ser bytes")
 
 # Configurar MLflow
-mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI_LOCAL", "http://localhost:5000"))
+mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
 mlflow.set_experiment("Transcricoes-PTBR-v3")
 
 with mlflow.start_run():

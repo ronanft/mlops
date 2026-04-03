@@ -1,3 +1,15 @@
 mlflow_data/
 .env
 src/*.pyc
+.pyc
+__pycache__/
+
+*.py[cod]
+*$py.class
+
+venv/
+.env/
+
+*.log
+.DS_Store
+.db

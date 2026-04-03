@@ -8,14 +8,14 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ./mlflow_data:/mlflow
+      - ./mlflow_data:/mlflow # A 1a é a pasta no host, a 2a é a pasta no container
     env_file:
       - .env
     environment:
       - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
       - POSTGRES_URI=${POSTGRES_URI}
       - MLFLOW_BACKEND_STORE_URI=${MLFLOW_BACKEND_STORE_URI}
-      - MLFLOW_DEFAULT_ARTIFACT_ROOT=${MLFLOW_DEFAULT_ARTIFACT_ROOT}
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=mlflow-artifacts:/mlflow
     depends_on:
       - postgres
     networks:
@@ -45,6 +45,53 @@ services:
     networks:
       - ml_net
 
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: streamlit
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./:/app
+    env_file:
+      - .env
+    environment:
+      # Ajustamos o host do redis e postgres para referenciar os containers do compose
+      - REDIS_HOST=redis
+      - POSTGRES_LOCAL_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - TRANSCRIBE_URL=${TRANSCRIBE_URL}
+    depends_on:
+      - postgres
+      - redis
+    command: streamlit run src/app.py
+    networks:
+      - ml_net
+
+  rq_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: rq_worker
+    volumes:
+      - ./:/app
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - POSTGRES_LOCAL_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - TRANSCRIBE_URL=${TRANSCRIBE_URL}
+      - PYTHONPATH=/app/src
+    depends_on:
+      - postgres
+      - redis
+    command: rq worker transcription_queue --url redis://redis:${REDIS_PORT}/
+    networks:
+      - ml_net
+
 networks:
   ml_net:
     driver: bridge
+
+volumes:
+  mlflow-artifacts:

@@ -1,51 +1,19 @@
 import streamlit as st
-import boto3
-import psycopg2
 import uuid
 import os
-from dotenv import load_dotenv
-from pathlib import Path
-from botocore.config import Config
-from redis import Redis
-from rq import Queue
+from connections import ConnectionManager
+from config import Config
 
-# Configuração de caminhos e env
-base_path = Path(__file__).resolve().parent.parent
-load_dotenv(dotenv_path=base_path / '.env')
-
-# Configuração do Redis
-redis_host = os.getenv("REDIS_HOST", "localhost")
-redis_port = int(os.getenv("REDIS_PORT", "6379"))
-redis_conn = Redis(host=redis_host, port=redis_port)
-q = Queue('transcription_queue', connection=redis_conn) # simples assim! e esse será o nome da nossa fila!
+# Recuperar as dependências globais via ConnectionManager
+q = ConnectionManager.get_rq_queue()
+s3_client = ConnectionManager.get_r2_client()
 
 # Log: Check queue size at startup
-print(f"[DEBUG] Redis connection established. Queue: 'transcription_queue'")
+print(f"[DEBUG] Redis/RQ connection established. Queue: '{Config.REDIS_QUEUE}'")
 print(f"[DEBUG] Current queue size: {len(q)}")
 
-# Validação de variáveis de ambiente necessárias para R2
-required_env = [
-    "R2_ACCESS_KEY_ID",
-    "R2_SECRET_ACCESS_KEY",
-    "R2_BUCKET_NAME",
-    "R2_ENDPOINT_URL",
-]
-missing = [v for v in required_env if not os.getenv(v)]
-if missing:
-    raise RuntimeError(f"R2 credentials missing. Set: {', '.join(missing)}")
-
-# Configuração S3 (R2) usando os nomes corretos do .env
-s3_client = boto3.client(
-    's3',
-    endpoint_url=os.getenv("R2_ENDPOINT_URL"),
-    aws_access_key_id=os.getenv("R2_ACCESS_KEY_ID"),
-    aws_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY"),
-    config=Config(signature_version='s3v4', s3={'addressing_style': 'path'}),
-    region_name="auto"
-)
-
 def get_db_connection():
-    return psycopg2.connect(os.getenv("POSTGRES_LOCAL_URI"))
+    return ConnectionManager.get_db_connection()
 
 def display_transcriptions():
     """Exibe a lista de transcrições na interface."""
@@ -128,7 +96,11 @@ if uploaded_file:
             st.balloons()
 
             # Se ok upload para cloudflare e postgres
-            job = q.enqueue('worker.process_transcription', args=(db_id,)) # db_id é o id do registro no Postgres
+            # Enqueue usando o caminho de módulo completo para evitar erro
+            # "Invalid attribute name: worker.process_transcription" quando
+            # o worker não encontra o módulo no PYTHONPATH.
+            from worker import process_transcription
+            job = q.enqueue(process_transcription, args=(str(db_id),))
             print(f"[DEBUG] Job enqueued - ID: {job.id}, db_id: {db_id}")
             print(f"[DEBUG] Queue size after enqueue: {len(q)}")
             print(f"[DEBUG] Workers registered: {q.worker_names}")
