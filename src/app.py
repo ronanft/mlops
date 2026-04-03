@@ -103,7 +103,6 @@ if uploaded_file:
             job = q.enqueue(process_transcription, args=(str(db_id),))
             print(f"[DEBUG] Job enqueued - ID: {job.id}, db_id: {db_id}")
             print(f"[DEBUG] Queue size after enqueue: {len(q)}")
-            print(f"[DEBUG] Workers registered: {q.worker_names}")
             st.info(f"Job enviado para a fila do Redis!")
             
         except Exception as e:
