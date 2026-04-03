@@ -1,4 +1,5 @@
 mlflow_data/
+postgres_data/
 .env
 src/*.pyc
 .pyc
