@@ -12,12 +12,20 @@ import os
 import tempfile
 import time
 import logging
+import threading
 from pathlib import Path
 
 import requests
 
 from config import Config
 from connections import ConnectionManager
+from metrics import (
+    start_metrics_server,
+    record_transcription_completed,
+    record_transcription_failed,
+    update_transcriptions_in_progress,
+    transcription_duration_seconds
+)
 
 # --- Logging ---
 logging.basicConfig(
@@ -27,12 +35,29 @@ logging.basicConfig(
 )
 log = logging.getLogger("worker")
 
+# Iniciar servidor de métricas em thread separada
+def start_metrics_thread():
+    """Inicia o servidor de métricas Prometheus em uma thread separada."""
+    try:
+        start_metrics_server(port=8002, host='0.0.0.0')
+    except Exception as e:
+        log.error(f"Failed to start metrics server: {e}")
+
+# Iniciar thread de métricas
+metrics_thread = threading.Thread(target=start_metrics_thread, daemon=True)
+metrics_thread.start()
+log.info("Metrics server thread started on port 8002")
+
 def process_transcription(db_id: str):
    """Processa a transcrição para o registro com id `db_id`."""
    conn = None
    cur = None
+   start_time = time.time()
+   
    try:
       log.info("Iniciando processamento: %s", db_id)
+      # Incrementar contador de transcrições em progresso
+      update_transcriptions_in_progress(1)
       conn = ConnectionManager.get_db_connection()
       conn.autocommit = False
       cur = conn.cursor()
@@ -102,9 +127,21 @@ def process_transcription(db_id: str):
       )
       conn.commit()
       log.info("Processamento concluído para id=%s", db_id)
+      
+      # Registrar métricas de sucesso
+      duration = time.time() - start_time
+      transcription_duration_seconds.observe(duration)
+      record_transcription_completed()
 
    except Exception as e:
       log.exception("Erro ao processar id=%s: %s", db_id, e)
+      
+      # Registrar métricas de falha
+      duration = time.time() - start_time
+      transcription_duration_seconds.observe(duration)
+      error_type = 'api_error' if 'API' in str(e) else 'db_error' if 'database' in str(e).lower() else 'unknown'
+      record_transcription_failed(error_type=error_type)
+      
       try:
          if conn and cur:
             conn.rollback()
@@ -120,11 +157,13 @@ def process_transcription(db_id: str):
                conn.rollback()
       except Exception:
          log.exception("Erro ao tentar fazer rollback/atualizar status de falha para id=%s", db_id)
-   finally:
-      try:
-         if cur:
-            cur.close()
-         if conn:
-            conn.close()
-      except Exception:
-         log.exception("Erro ao fechar conexão com o banco para id=%s", db_id)
+  finally:
+     # Decrementar contador de transcrições em progresso
+     update_transcriptions_in_progress(-1)
+     try:
+        if cur:
+           cur.close()
+        if conn:
+           conn.close()
+     except Exception:
+        log.exception("Erro ao fechar conexão com o banco para id=%s", db_id)

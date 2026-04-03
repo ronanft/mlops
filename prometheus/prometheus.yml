@@ -1,0 +1,64 @@
+# Prometheus configuration for MLOps project
+# Scrape interval: 15 seconds
+# Evaluation interval: 15 seconds
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'mlops-cluster'
+    environment: 'development'
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+# Rule files (optional)
+# rule_files:
+#   - "alerts/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Node Exporter - System metrics (CPU, memory, disk, network)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'docker-host'
+
+  # Streamlit App - Application metrics
+  - job_name: 'streamlit-app'
+    static_configs:
+      - targets: ['streamlit:8001']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'streamlit-app'
+
+  # RQ Worker - Worker metrics
+  - job_name: 'rq-worker'
+    static_configs:
+      - targets: ['rq_worker:8002']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'rq-worker'
+
+  # PostgreSQL - Database metrics (optional, requires postgres_exporter)
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+
+  # Redis - Cache metrics (optional, requires redis_exporter)
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']

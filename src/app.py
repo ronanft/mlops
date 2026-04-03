@@ -1,8 +1,16 @@
 import streamlit as st
 import uuid
 import os
+import threading
+import time
 from connections import ConnectionManager
 from config import Config
+from metrics import (
+    start_metrics_server,
+    record_transcription_request,
+    record_upload,
+    update_queue_size
+)
 
 # Recuperar as dependências globais via ConnectionManager
 q = ConnectionManager.get_rq_queue()
@@ -11,6 +19,35 @@ s3_client = ConnectionManager.get_r2_client()
 # Log: Check queue size at startup
 print(f"[DEBUG] Redis/RQ connection established. Queue: '{Config.REDIS_QUEUE}'")
 print(f"[DEBUG] Current queue size: {len(q)}")
+
+# Iniciar servidor de métricas em thread separada
+def start_metrics_thread():
+    """Inicia o servidor de métricas Prometheus em uma thread separada."""
+    try:
+        start_metrics_server(port=8001, host='0.0.0.0')
+    except Exception as e:
+        print(f"[ERROR] Failed to start metrics server: {e}")
+
+# Iniciar thread de métricas
+metrics_thread = threading.Thread(target=start_metrics_thread, daemon=True)
+metrics_thread.start()
+print("[DEBUG] Metrics server thread started on port 8001")
+
+# Função para atualizar periodicamente o gauge de tamanho da fila
+def update_queue_metrics():
+    """Atualiza periodicamente o gauge de tamanho da fila."""
+    while True:
+        try:
+            queue_size = len(q)
+            update_queue_size(queue_size)
+        except Exception as e:
+            print(f"[ERROR] Failed to update queue metrics: {e}")
+        time.sleep(10)  # Atualiza a cada 10 segundos
+
+# Iniciar thread de atualização de métricas
+queue_metrics_thread = threading.Thread(target=update_queue_metrics, daemon=True)
+queue_metrics_thread.start()
+print("[DEBUG] Queue metrics update thread started")
 
 def get_db_connection():
     return ConnectionManager.get_db_connection()
@@ -76,11 +113,15 @@ if uploaded_file:
         try:
             # 2. Upload para Cloudflare R2
             with st.spinner("Subindo arquivo para o R2..."):
+                file_size = len(uploaded_file.read())
+                uploaded_file.seek(0)  # Resetar o ponteiro do arquivo
                 s3_client.upload_fileobj(
-                    uploaded_file, 
-                    os.getenv("R2_BUCKET_NAME"), 
+                    uploaded_file,
+                    os.getenv("R2_BUCKET_NAME"),
                     r2_key
                 )
+                # Registrar métrica de upload
+                record_upload(status='success', bytes_sent=file_size)
             
             # 3. Registrar no Postgres
             with get_db_connection() as conn:
@@ -105,8 +146,13 @@ if uploaded_file:
             print(f"[DEBUG] Queue size after enqueue: {len(q)}")
             st.info(f"Job enviado para a fila do Redis!")
             
+            # Registrar métrica de transcrição solicitada
+            record_transcription_request(status='pending')
+            
         except Exception as e:
             st.error(f"❌ Erro ao processar upload: {e}")
+            # Registrar métrica de upload falhado
+            record_upload(status='failed', bytes_sent=0)
 
 # --- LISTAGEM DE STATUS ---
 st.divider()

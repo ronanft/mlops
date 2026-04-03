@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir \
     boto3 \
     psycopg2-binary \
     requests \
-    python-dotenv
+    python-dotenv \
+    prometheus_client
 
 # A pasta do projeto será montada via volume no docker-compose
