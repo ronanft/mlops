@@ -7,8 +7,12 @@ para monitoramento do aplicativo de transcrição de áudio.
 
 from prometheus_client import Counter, Histogram, Gauge, start_http_server
 import logging
+from typing import Optional
 
 log = logging.getLogger("metrics")
+
+# Dictionary to track if metrics server has been started per port
+_metrics_servers_started = {}
 
 # ==================== CONTADORES ====================
 
@@ -80,17 +84,49 @@ transcriptions_in_progress = Gauge(
 def start_metrics_server(port: int = 8000, host: str = '0.0.0.0'):
     """
     Inicia o servidor HTTP do Prometheus para expor as métricas.
+    
+    Uses a singleton pattern per port to ensure the server is only started once
+    per port, preventing "Address already in use" errors when Streamlit reruns.
 
     Args:
         port: Porta onde o servidor irá escutar (padrão: 8000)
         host: Host onde o servidor irá escutar (padrão: 0.0.0.0)
     """
+    global _metrics_servers_started
+    
+    if port in _metrics_servers_started:
+        log.debug(f"Metrics server already running on {host}:{port}, skipping start")
+        return
+    
     try:
         start_http_server(port, host)
+        _metrics_servers_started[port] = True
         log.info(f"Servidor de métricas Prometheus iniciado em {host}:{port}")
     except Exception as e:
         log.error(f"Erro ao iniciar servidor de métricas: {e}")
         raise
+
+
+def reset_metrics_server_flag(port: Optional[int] = None):
+    """
+    Reset the metrics server started flag for a specific port or all ports.
+    
+    This is useful for testing or when you want to force a restart
+    of the metrics server. Note: this only resets the flag and does
+    not actually stop the running server.
+    
+    Args:
+        port: Specific port to reset. If None, resets all ports.
+    """
+    global _metrics_servers_started
+    
+    if port is not None:
+        if port in _metrics_servers_started:
+            del _metrics_servers_started[port]
+            log.debug(f"Metrics server flag reset for port {port}")
+    else:
+        _metrics_servers_started.clear()
+        log.debug("All metrics server flags reset")
 
 
 def record_transcription_request(status: str = 'pending'):

@@ -157,13 +157,13 @@ def process_transcription(db_id: str):
                conn.rollback()
       except Exception:
          log.exception("Erro ao tentar fazer rollback/atualizar status de falha para id=%s", db_id)
-  finally:
-     # Decrementar contador de transcrições em progresso
-     update_transcriptions_in_progress(-1)
-     try:
-        if cur:
-           cur.close()
-        if conn:
-           conn.close()
-     except Exception:
-        log.exception("Erro ao fechar conexão com o banco para id=%s", db_id)
+   finally:
+      # Decrementar contador de transcrições em progresso
+      update_transcriptions_in_progress(-1)
+      try:
+         if cur:
+            cur.close()
+         if conn:
+            conn.close()
+      except Exception:
+         log.exception("Erro ao fechar conexão com o banco para id=%s", db_id)
