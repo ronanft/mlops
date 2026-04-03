@@ -2,7 +2,7 @@ import bentoml
 import mlflow
 
 BENTO_MODEL_NAME = "whisper_bento"
-MLFLOW_MODEL_NAME = "Whisper_PTBR"
+MLFLOW_MODEL_NAME = "transcritor-PTBR-pyfunc"
 
 mlflow.set_tracking_uri("http://localhost:5000")  # Set the tracking URI to your MLflow server
 
