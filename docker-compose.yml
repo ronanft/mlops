@@ -114,6 +114,7 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
@@ -126,18 +127,18 @@ services:
   node-exporter:
     image: prom/node-exporter:latest
     container_name: node-exporter
-    ports:
-      - "9100:9100"
+    network_mode: host
+    pid: host
     command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|mnt|run|var/lib/docker)($$|/)'
+      - '--collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|9p|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|erofs|sysfs|tracefs)$'
+      - '--no-collector.softnet'
+      - '--no-collector.netstat'
+      - '--no-collector.filesystem'
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    networks:
-      - ml_net
+      - /:/host:ro
+    restart: unless-stopped
 
 networks:
   ml_net:
